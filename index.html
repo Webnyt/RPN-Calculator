@@ -1,0 +1,315 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>RPN Calculator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;800&family=Barlow:wght@400;500;600&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: the stack is shown as a ladder of registers on the left (X is the top); a graphite calculator with a green LCD on the right. Pressing Enter pushes, pressing an operator pops two and pushes one. */
+:root {
+  --bg: #e5e9ef;
+  --surface: #ffffff;
+  --surface-2: #d8dee7;
+  --ink: #16202c;
+  --ink-soft: #566475;
+  --line: #c6cfdb;
+  --accent: #c2410c;
+  --accent-ink: #ffffff;
+  --body: #2a2f38;
+  --key: #eceff3;
+  --key-ink: #16202c;
+  --key-op: #aab4c2;
+  --lcd: #c8d6b4;
+  --lcd-ink: #1b2a14;
+  --good: #1a7f4b;
+  --bad: #b3261e;
+  --f-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-lcd: "Share Tech Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1218; --surface: #161c25; --surface-2: #202936; --ink: #e8edf4; --ink-soft: #94a1b3; --line: #2a3443;
+    --accent: #fb923c; --accent-ink: #1f0c02; --body: #1b2028; --key: #2a313c; --key-ink: #e8edf4; --key-op: #434d5c;
+    --lcd: #1b2a1d; --lcd-ink: #9be59b; --good: #4cc38a; --bad: #ff7b72; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1218; --surface: #161c25; --surface-2: #202936; --ink: #e8edf4; --ink-soft: #94a1b3; --line: #2a3443;
+  --accent: #fb923c; --accent-ink: #1f0c02; --body: #1b2028; --key: #2a313c; --key-ink: #e8edf4; --key-op: #434d5c;
+  --lcd: #1b2a1d; --lcd-ink: #9be59b; --good: #4cc38a; --bad: #ff7b72; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.5;
+  padding-block: 24px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1000px; margin: 0 auto; display: grid; gap: 16px; }
+h1, h2 { margin: 0; text-wrap: balance; }
+h1 { font-family: var(--f-display); font-weight: 800; font-size: 48px; line-height: 1; letter-spacing: .01em; text-transform: uppercase; }
+h2 { font-family: var(--f-display); font-weight: 800; font-size: 20px; letter-spacing: .03em; text-transform: uppercase; }
+.lede { margin: 8px 0 0; color: var(--ink-soft); max-width: 66ch; }
+.label { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 360px); gap: 16px; align-items: start; }
+.col { display: grid; gap: 14px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 10px; min-width: 0; align-content: start; }
+.head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.count { font-family: var(--f-lcd); font-size: 13px; background: var(--surface-2); padding: 2px 9px; border-radius: 99px; color: var(--ink-soft); }
+
+.ladder { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+.ladder li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface-2); font-family: var(--f-lcd); font-size: 22px; }
+.ladder li b { font-family: var(--f-display); font-size: 18px; color: var(--ink-soft); font-weight: 800; }
+.ladder li span { text-align: right; overflow-wrap: anywhere; }
+.ladder li em { font-style: normal; font-family: var(--f-body); font-size: 10px; letter-spacing: .08em; font-weight: 700; color: var(--accent); }
+.ladder li.top { border-color: var(--accent); border-width: 2px; }
+.ladder li.blank { background: none; border-style: dashed; color: var(--ink-soft); }
+.ladder li.blank span { font-size: 13px; font-family: var(--f-body); text-align: left; grid-column: 2 / 4; }
+.note { margin: 0; font-size: 13.5px; color: var(--ink-soft); }
+.say { min-height: 50px; display: flex; gap: 10px; align-items: flex-start; }
+.tag { flex: 0 0 auto; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: var(--ink); color: var(--bg); margin-top: 3px; }
+.tag.err { background: var(--bad); color: #fff; }
+.tag.act { background: var(--accent); color: var(--accent-ink); }
+.tape { list-style: none; margin: 0; padding: 0; font-family: var(--f-lcd); font-size: 13.5px; display: grid; gap: 2px; color: var(--ink-soft); }
+.tape li:first-child { color: var(--ink); }
+.ex { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+select { font: inherit; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.btn { font: inherit; font-weight: 600; cursor: pointer; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 8px 14px; }
+.btn:hover { border-color: var(--accent); }
+.btn:focus-visible, select:focus-visible, .k:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.typed { font-family: var(--f-lcd); font-size: 14px; color: var(--ink-soft); min-height: 22px; }
+
+.calc { background: var(--body); border-radius: 16px; padding: 16px; display: grid; gap: 12px; box-shadow: 0 10px 30px rgba(10, 20, 35, .25); }
+.lcd { background: var(--lcd); color: var(--lcd-ink); border-radius: 8px; padding: 10px 14px 12px; display: grid; gap: 2px; box-shadow: inset 0 2px 6px rgba(0, 0, 0, .3); }
+.lcd small { font-family: var(--f-lcd); font-size: 12px; opacity: .7; display: flex; justify-content: space-between; }
+.lcd output { font-family: var(--f-lcd); font-size: 40px; line-height: 1.1; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 44px; }
+.pad { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.k { font: inherit; font-family: var(--f-display); font-weight: 800; font-size: 22px; min-height: 50px; border-radius: 8px; border: 0; cursor: pointer; background: var(--key); color: var(--key-ink); box-shadow: 0 3px 0 rgba(0, 0, 0, .35); transition: transform .06s, box-shadow .06s; }
+.k:active, .k.lit { transform: translateY(3px); box-shadow: 0 0 0 rgba(0, 0, 0, .35); }
+.k.op { background: var(--key-op); }
+.k.fn { background: var(--key-op); font-size: 17px; letter-spacing: .02em; }
+.k.enter { grid-column: 1 / -1; background: var(--accent); color: var(--accent-ink); font-size: 24px; letter-spacing: .08em; text-transform: uppercase; }
+.k.lit { outline: 3px solid var(--accent); outline-offset: 2px; }
+.why { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; font-size: 14.5px; color: var(--ink-soft); }
+.why p { margin: 4px 0 0; }
+
+@media (prefers-reduced-motion: reduce) { .k { transition: none; } }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr); } .why { grid-template-columns: minmax(0, 1fr); } h1 { font-size: 38px; } .calc { order: -1; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>RPN Calculator</h1>
+    <p class="lede">This calculator has no equals key. You put numbers on a stack, and each operator takes the top two off, works them out, and puts the answer back. To add 3 and 4, press 3, Enter, 4, then +.</p>
+  </header>
+
+  <div class="main">
+    <div class="col">
+      <section class="panel" aria-label="The stack">
+        <div class="head"><h2>The stack</h2><span class="count" id="count">0 numbers</span></div>
+        <ul class="ladder" id="ladder"></ul>
+        <p class="note">X is the top. Operators always use X and Y, then push the answer back as the new X.</p>
+      </section>
+      <section class="panel" aria-label="What just happened">
+        <div class="say" id="say" aria-live="polite"></div>
+        <div class="typed" id="typed"></div>
+      </section>
+      <section class="panel" aria-label="Watch an example">
+        <h2>Watch an example</h2>
+        <div class="ex">
+          <select id="exSel" aria-label="Example"></select>
+          <button class="btn" id="exGo">Play it</button>
+          <span class="note" id="exKeys"></span>
+        </div>
+      </section>
+      <section class="panel" aria-label="History">
+        <div class="head"><h2>Steps so far</h2><span class="label">newest first</span></div>
+        <ul class="tape" id="tape"></ul>
+      </section>
+    </div>
+
+    <section class="calc" aria-label="Calculator">
+      <div class="lcd"><small><span id="lcdTag">X</span><span id="lcdDepth"></span></small><output id="lcd" aria-live="off">0</output></div>
+      <div class="pad" id="pad"></div>
+    </section>
+  </div>
+
+  <section class="why" aria-label="Why a stack">
+    <div><h2>Enter pushes</h2><p>Enter puts the number you typed on top of the stack. Press Enter on an empty entry and it copies the top number, which is handy for squaring.</p></div>
+    <div><h2>Operators pop two, push one</h2><p>Plus pops X and Y, adds them, and pushes the sum. The two numbers it needs are always the two pushed most recently, which is exactly what a stack hands over first.</p></div>
+    <div><h2>Undo is a stack too</h2><p>Every change saves the stack before it happens, on a second stack. Undo pops the latest saved copy and puts it back, so the most recent step is always undone first.</p></div>
+  </section>
+</div>
+
+<script>
+/* ---------- The data structure ---------- */
+class Stack {
+  #items = [];
+  push(v) { this.#items.push(v); }
+  pop() { return this.#items.pop(); }
+  peek() { return this.#items[this.#items.length - 1]; }
+  get size() { return this.#items.length; }
+  isEmpty() { return this.#items.length === 0; }
+  clear() { this.#items.length = 0; }
+  load(arr) { this.#items = arr.slice(); }
+  toArray() { return this.#items.slice(); }   // bottom first
+}
+
+/* ---------- The calculator engine ---------- */
+const fmt = n => (Number.isInteger(n) && Math.abs(n) < 1e15 ? String(n) : String(parseFloat(n.toPrecision(10))));
+const BIN = { add: (a, b) => a + b, sub: (a, b) => a - b, mul: (a, b) => a * b, div: (a, b) => a / b, pow: (a, b) => Math.pow(a, b) };
+const SYM = { add: "+", sub: "−", mul: "×", div: "÷", pow: "^" };
+const UN = { sqrt: x => Math.sqrt(x), sq: x => x * x, inv: x => 1 / x };
+const UNSYM = { sqrt: "√", sq: "x²", inv: "1/x" };
+
+function createCalc() {
+  const c = { stack: new Stack(), hist: new Stack(), entry: "", msg: { kind: "act", tag: "Ready", text: "Type a number and press Enter." }, tape: [] };
+  const say = (kind, tag, text) => { c.msg = { kind, tag, text }; };
+  const err = text => say("err", "Cannot do that", text);
+  const snap = () => c.hist.push(c.stack.toArray());
+  const snapValues = () => c.hist.push(values());   // includes a number still being typed, so Undo brings back both operands
+  const log = t => { c.tape.unshift(t); if (c.tape.length > 8) c.tape.pop(); };
+  const values = () => { const a = c.stack.toArray(); if (c.entry !== "") a.push(Number(c.entry)); return a; };
+  const commit = () => { if (c.entry !== "") { c.stack.push(Number(c.entry)); c.entry = ""; } };
+
+  c.press = k => {
+    if (/^[0-9.]$/.test(k)) {
+      if (k === "." && c.entry.includes(".")) return;
+      if (k === ".") c.entry = (c.entry === "" ? "0" : c.entry) + ".";
+      else c.entry = c.entry === "0" ? k : c.entry + k;
+      say("act", "Typing", `Typing ${c.entry}. Nothing is on the stack until you press Enter or an operator.`); return;
+    }
+    if (k === "back") { c.entry = c.entry.slice(0, -1); say("act", "Typing", c.entry ? `Typing ${c.entry}.` : "Entry cleared."); return; }
+    if (k === "enter") {
+      if (c.entry !== "") { snap(); const v = Number(c.entry); commit(); say("act", "Push", `Pushed ${fmt(v)}. The stack now holds ${c.stack.size}.`); log(`push ${fmt(v)}`); }
+      else if (!c.stack.isEmpty()) { snap(); const v = c.stack.peek(); c.stack.push(v); say("act", "Push", `Nothing was typed, so Enter copied the top number. Pushed ${fmt(v)} again.`); log(`dup ${fmt(v)}`); }
+      else err("The stack is empty. Type a number first.");
+      return;
+    }
+    if (BIN[k]) {
+      const v = values();
+      if (v.length < 2) return err(`${SYM[k]} needs two numbers on the stack. There ${v.length === 1 ? "is only one" : "are none"}.`);
+      const b = v[v.length - 1], a = v[v.length - 2];
+      if (k === "div" && b === 0) return err("Dividing by zero is not allowed. The stack is unchanged.");
+      const r = BIN[k](a, b);
+      if (!isFinite(r) || Number.isNaN(r)) return err("That result is not a real number.");
+      snapValues(); commit(); c.stack.pop(); c.stack.pop(); c.stack.push(r);
+      say("act", "Pop 2, push 1", `Popped ${fmt(b)} (X) and ${fmt(a)} (Y). ${fmt(a)} ${SYM[k]} ${fmt(b)} = ${fmt(r)}. Pushed ${fmt(r)}.`); log(`${fmt(a)} ${SYM[k]} ${fmt(b)} = ${fmt(r)}`); return;
+    }
+    if (UN[k]) {
+      const v = values();
+      if (v.length < 1) return err("The stack is empty. Type a number first.");
+      const x = v[v.length - 1];
+      if (k === "sqrt" && x < 0) return err("There is no real square root of a negative number.");
+      if (k === "inv" && x === 0) return err("Cannot divide 1 by zero.");
+      const r = UN[k](x);
+      snapValues(); commit(); c.stack.pop(); c.stack.push(r);
+      say("act", "Pop 1, push 1", `Popped ${fmt(x)}, applied ${UNSYM[k]}, pushed ${fmt(r)}.`); log(`${UNSYM[k]}(${fmt(x)}) = ${fmt(r)}`); return;
+    }
+    if (k === "neg") {
+      if (c.entry !== "") { c.entry = c.entry.startsWith("-") ? c.entry.slice(1) : "-" + c.entry; say("act", "Typing", `Typing ${c.entry}.`); return; }
+      if (c.stack.isEmpty()) return err("The stack is empty.");
+      snap(); const x = c.stack.pop(); c.stack.push(-x); say("act", "Pop 1, push 1", `Changed the sign of ${fmt(x)}.`); log(`neg ${fmt(x)}`); return;
+    }
+    if (k === "swap") {
+      const v = values();
+      if (v.length < 2) return err("Swap needs two numbers on the stack.");
+      snapValues(); commit(); const x = c.stack.pop(), y = c.stack.pop(); c.stack.push(x); c.stack.push(y);
+      say("act", "Swap", `Swapped the top two numbers. X is now ${fmt(y)} and Y is ${fmt(x)}.`); log("swap"); return;
+    }
+    if (k === "drop") {
+      if (c.entry !== "") { c.entry = ""; say("act", "Cleared", "Cleared what you were typing."); return; }
+      if (c.stack.isEmpty()) return err("The stack is already empty.");
+      snap(); const x = c.stack.pop(); say("act", "Pop", `Popped ${fmt(x)} and threw it away.`); log(`drop ${fmt(x)}`); return;
+    }
+    if (k === "clear") { snap(); c.stack.clear(); c.entry = ""; say("act", "Clear", "The stack is empty again."); log("clear"); return; }
+    if (k === "undo") {
+      if (c.entry !== "") { c.entry = ""; say("act", "Undo", "Cleared what you were typing."); return; }
+      if (c.hist.isEmpty()) return err("Nothing to undo yet.");
+      c.stack.load(c.hist.pop()); say("act", "Undo", "Popped the last saved stack from the undo stack and restored it."); log("undo"); return;
+    }
+  };
+  return c;
+}
+
+/* ---------- Guided examples ---------- */
+const EXAMPLES = [
+  { name: "(3 + 4) × 5", keys: ["3", "enter", "4", "add", "5", "mul"] },
+  { name: "(2 + 3) × (4 + 5)", keys: ["2", "enter", "3", "add", "4", "enter", "5", "add", "mul"] },
+  { name: "Hypotenuse of a 3 and 4 triangle", keys: ["3", "sq", "4", "sq", "add", "sqrt"] },
+  { name: "Square 12 using Enter to copy", keys: ["1", "2", "enter", "enter", "mul"] }
+];
+const KEYNAME = { enter: "Enter", add: "+", sub: "−", mul: "×", div: "÷", pow: "^", sqrt: "√", sq: "x²" };
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+const calc = createCalc();
+let playing = null;
+
+const LABELS = ["X", "Y", "Z", "T", "5", "6", "7", "8"];
+function render() {
+  const items = calc.stack.toArray().reverse(), shown = items.slice(0, 8);
+  const rows = shown.map((v, i) => `<li class="${i === 0 ? "top" : ""}"><b>${LABELS[i]}</b><span>${esc(fmt(v))}</span>${i === 0 ? "<em>TOP</em>" : "<em></em>"}</li>`);
+  while (rows.length < 4) rows.push(`<li class="blank"><b>${LABELS[rows.length]}</b><span>${rows.length === 0 ? "empty. Type a number and press Enter." : "empty"}</span></li>`);
+  if (items.length > 8) rows.push(`<li class="blank"><b></b><span>+${items.length - 8} more below</span></li>`);
+  $("ladder").innerHTML = rows.join("");
+  $("count").textContent = items.length + (items.length === 1 ? " number" : " numbers");
+  const typing = calc.entry !== "";
+  $("lcd").textContent = typing ? calc.entry : items.length ? fmt(items[0]) : "0";
+  $("lcdTag").textContent = typing ? "TYPING" : "X";
+  $("lcdDepth").textContent = "depth " + items.length;
+  const m = calc.msg;
+  $("say").innerHTML = `<span class="tag ${m.kind}">${esc(m.tag)}</span><span>${esc(m.text)}</span>`;
+  $("typed").textContent = typing ? `Typing: ${calc.entry}` : "";
+  $("tape").innerHTML = calc.tape.length ? calc.tape.map(t => `<li>${esc(t)}</li>`).join("") : "<li>nothing yet</li>";
+}
+
+const KEYS = [
+  ["clear", "Clear", "fn"], ["drop", "Drop", "fn"], ["swap", "Swap", "fn"], ["undo", "Undo", "fn"],
+  ["sqrt", "√", "op"], ["sq", "x²", "op"], ["inv", "1/x", "op"], ["pow", "^", "op"],
+  ["7", "7", ""], ["8", "8", ""], ["9", "9", ""], ["div", "÷", "op"],
+  ["4", "4", ""], ["5", "5", ""], ["6", "6", ""], ["mul", "×", "op"],
+  ["1", "1", ""], ["2", "2", ""], ["3", "3", ""], ["sub", "−", "op"],
+  ["0", "0", ""], [".", ".", ""], ["neg", "±", ""], ["add", "+", "op"],
+  ["enter", "Enter", "enter"]
+];
+$("pad").innerHTML = KEYS.map(([k, t, c]) => `<button class="k ${c}" data-k="${k}" aria-label="${esc(KEYNAME[k] || t)}">${esc(t)}</button>`).join("");
+$("pad").addEventListener("click", e => { const b = e.target.closest("button[data-k]"); if (!b) return; stopExample(); calc.press(b.dataset.k); render(); });
+
+/* keyboard */
+const MAP = { "+": "add", "-": "sub", "*": "mul", "/": "div", "^": "pow", Enter: "enter", Backspace: "back", Escape: "clear" };
+document.addEventListener("keydown", e => {
+  if (e.target.closest("select, button") && e.key === "Enter") return;
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); stopExample(); calc.press("undo"); render(); return; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = /^[0-9.]$/.test(e.key) ? e.key : MAP[e.key];
+  if (!k) return;
+  e.preventDefault(); stopExample(); calc.press(k); render();
+});
+
+/* examples press the real keys, lighting each one */
+function stopExample() { if (playing) { clearTimeout(playing); playing = null; document.querySelectorAll(".k.lit").forEach(b => b.classList.remove("lit")); $("exGo").textContent = "Play it"; } }
+$("exSel").innerHTML = EXAMPLES.map((x, i) => `<option value="${i}">${esc(x.name)}</option>`).join("");
+function showKeys() { const ex = EXAMPLES[$("exSel").value]; $("exKeys").textContent = "Keys: " + ex.keys.map(k => KEYNAME[k] || k).join("  "); }
+$("exSel").onchange = () => { stopExample(); showKeys(); };
+$("exGo").onclick = () => {
+  if (playing) { stopExample(); return; }
+  const ex = EXAMPLES[$("exSel").value]; let i = 0;
+  calc.press("clear"); calc.tape.length = 0; render(); $("exGo").textContent = "Stop";
+  const next = () => {
+    document.querySelectorAll(".k.lit").forEach(b => b.classList.remove("lit"));
+    if (i >= ex.keys.length) { playing = null; $("exGo").textContent = "Play it"; return; }
+    const k = ex.keys[i++]; const btn = document.querySelector(`.k[data-k="${k}"]`); if (btn) btn.classList.add("lit");
+    calc.press(k); render(); playing = setTimeout(next, 1100);
+  };
+  playing = setTimeout(next, 500);
+};
+
+/* opening state: 3 Enter 4 + already done, with 5 typed and waiting for the multiply key */
+["3", "enter", "4", "add", "5"].forEach(k => calc.press(k));
+calc.msg = { kind: "act", tag: "Your turn", text: "7 is on the stack and you have typed 5. Press × to pop both and push 35, or pick an example below." };
+showKeys(); render();
+</script>
+
+</body></html>
